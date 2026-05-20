@@ -5,66 +5,233 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Hello World</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      min-height: 100vh;
+      background: #1a1a2e;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      height: 100vh;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       color: #e0e0e0;
     }
-
-    .container {
-      text-align: center;
-      padding: 2rem;
-    }
-
     h1 {
-      font-size: 4rem;
+      font-size: 2rem;
       font-weight: 700;
-      letter-spacing: -0.02em;
       background: linear-gradient(90deg, #e96c6c, #a78bfa, #60a5fa);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
-      margin-bottom: 1rem;
+      margin-bottom: 0.5rem;
     }
-
+    canvas {
+      border: 2px solid #0f3460;
+      border-radius: 8px;
+      display: block;
+    }
     p {
-      font-size: 1.25rem;
-      color: #9ca3af;
-      max-width: 400px;
-      line-height: 1.6;
-    }
-
-    .dot {
-      display: inline-block;
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: #60a5fa;
-      margin: 2rem auto 0;
-      animation: pulse 1.5s ease-in-out infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.4; transform: scale(0.75); }
+      margin-top: 0.5rem;
+      font-size: 0.85rem;
+      color: #6b7280;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Hello, World!</h1>
-    <p>Welcome. This is the beginning of something great!!</p>
-    <div class="dot"></div>
-  </div>
+  <h1>Hello, World!</h1>
+  <canvas id="game" width="600" height="360"></canvas>
+  <p>Arrow keys or WASD to move &nbsp;·&nbsp; Up / W / Space to jump</p>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    const W = canvas.width;
+    const H = canvas.height;
+
+    const GRAVITY = 0.5;
+    const JUMP = -11;
+    const SPEED = 3.5;
+
+    const COLORS = {
+      sky: '#0f1b35',
+      platform: '#4c1d95',
+      platformTop: '#7c3aed',
+      player: '#60a5fa',
+      playerEye: '#1e3a5f',
+      star: '#a78bfa',
+      coin: '#fbbf24',
+    };
+
+    // Platforms: [x, y, width]
+    const platforms = [
+      [0,   340, 600],   // ground
+      [60,  270, 100],
+      [220, 210, 120],
+      [400, 260, 100],
+      [480, 180, 100],
+      [150, 150, 80],
+      [300, 100, 90],
+      [30,  190, 80],
+    ];
+
+    // Coins: [x, y, collected]
+    const coins = platforms.slice(1).map(([px, py, pw]) => [px + pw / 2 - 8, py - 28, false]);
+
+    const player = {
+      x: 60, y: 280,
+      w: 20, h: 26,
+      vx: 0, vy: 0,
+      onGround: false,
+      facing: 1,
+    };
+
+    const keys = {};
+    document.addEventListener('keydown', e => keys[e.code] = true);
+    document.addEventListener('keyup',   e => keys[e.code] = false);
+
+    let score = 0;
+    let stars = Array.from({length: 40}, () => ({
+      x: Math.random() * W,
+      y: Math.random() * H * 0.7,
+      r: Math.random() * 1.5 + 0.5,
+      o: Math.random() * 0.5 + 0.3,
+    }));
+
+    function collides(px, py, pw, ph, plat) {
+      const [lx, ly, lw] = plat;
+      return px + pw > lx && px < lx + lw && py + ph > ly && py + ph < ly + 16;
+    }
+
+    function update() {
+      // Input
+      if (keys['ArrowLeft']  || keys['KeyA']) { player.vx = -SPEED; player.facing = -1; }
+      else if (keys['ArrowRight'] || keys['KeyD']) { player.vx = SPEED; player.facing = 1; }
+      else player.vx *= 0.8;
+
+      if ((keys['ArrowUp'] || keys['KeyW'] || keys['Space']) && player.onGround) {
+        player.vy = JUMP;
+        player.onGround = false;
+      }
+
+      player.vy += GRAVITY;
+      player.x += player.vx;
+      player.y += player.vy;
+
+      // Wrap horizontally
+      if (player.x + player.w < 0) player.x = W;
+      if (player.x > W) player.x = -player.w;
+
+      // Platform collision
+      player.onGround = false;
+      for (const plat of platforms) {
+        if (player.vy >= 0 && collides(player.x, player.y, player.w, player.h, plat)) {
+          player.y = plat[1] - player.h;
+          player.vy = 0;
+          player.onGround = true;
+        }
+      }
+
+      // Fall off bottom
+      if (player.y > H + 40) {
+        player.x = 60; player.y = 280;
+        player.vx = 0; player.vy = 0;
+      }
+
+      // Coin collection
+      for (const coin of coins) {
+        if (coin[2]) continue;
+        if (player.x < coin[0] + 16 && player.x + player.w > coin[0] &&
+            player.y < coin[1] + 16 && player.y + player.h > coin[1]) {
+          coin[2] = true;
+          score++;
+        }
+      }
+
+      // Reset if all collected
+      if (coins.every(c => c[2])) coins.forEach(c => c[2] = false);
+    }
+
+    function drawPlatform([x, y, w]) {
+      ctx.fillStyle = COLORS.platform;
+      ctx.fillRect(x, y + 4, w, 12);
+      ctx.fillStyle = COLORS.platformTop;
+      ctx.fillRect(x, y, w, 6);
+      ctx.fillStyle = '#6d28d9';
+      ctx.fillRect(x, y + 6, w, 2);
+    }
+
+    function drawPlayer() {
+      const { x, y, w, h, facing } = player;
+      ctx.save();
+      ctx.translate(x + w / 2, y + h / 2);
+      ctx.scale(facing, 1);
+
+      // Body
+      ctx.fillStyle = COLORS.player;
+      ctx.beginPath();
+      ctx.roundRect(-w/2, -h/2, w, h, 4);
+      ctx.fill();
+
+      // Eye
+      ctx.fillStyle = COLORS.playerEye;
+      ctx.beginPath();
+      ctx.arc(4, -4, 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Shine
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.beginPath();
+      ctx.roundRect(-w/2 + 2, -h/2 + 2, 6, 10, 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    function drawCoin([cx, cy, collected]) {
+      if (collected) return;
+      ctx.fillStyle = COLORS.coin;
+      ctx.beginPath();
+      ctx.arc(cx + 8, cy + 8, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fef3c7';
+      ctx.beginPath();
+      ctx.arc(cx + 6, cy + 6, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function draw() {
+      // Background
+      ctx.fillStyle = COLORS.sky;
+      ctx.fillRect(0, 0, W, H);
+
+      // Stars
+      for (const s of stars) {
+        ctx.globalAlpha = s.o;
+        ctx.fillStyle = COLORS.star;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      platforms.forEach(drawPlatform);
+      coins.forEach(drawCoin);
+      drawPlayer();
+
+      // Score
+      ctx.fillStyle = '#e0e0e0';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillText(`Coins: ${score}`, 12, 24);
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    loop();
+  </script>
 </body>
 </html>
