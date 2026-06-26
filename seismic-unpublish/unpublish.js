@@ -75,16 +75,22 @@ async function unpublishAsset(page, asset) {
     return 'skipped';
   }
 
-  // "Content not found" page means already unpublished
-  const notFound = await page.locator(':text("no longer published")').isVisible().catch(() => false);
-  if (notFound) {
+  // Wait for either the Open in Library button or the "Content not found" page
+  const arrived = await Promise.race([
+    page.locator('[data-atmt-id="Open In Library"]').waitFor({ state: 'visible', timeout: 15000 }).then(() => 'open'),
+    page.locator(':text("no longer published")').waitFor({ state: 'visible', timeout: 15000 }).then(() => 'notfound'),
+  ]).catch(() => 'timeout');
+
+  if (arrived === 'notfound') {
     log(`SKIPPED (already unpublished - content not found page): ${asset.name}`);
     markSpreadsheet(asset.name, 'Already unpublished');
     return 'skipped';
   }
+  if (arrived === 'timeout') {
+    throw new Error('Timed out waiting for Open in Library button or Content not found page');
+  }
 
   const openInLibrary = page.locator('[data-atmt-id="Open In Library"]');
-  await openInLibrary.waitFor({ state: 'visible', timeout: 15000 });
   await openInLibrary.click();
 
   const unpublishBtn = page.locator('[data-testid="cm-operations-unpublish-button"]');
