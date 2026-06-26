@@ -19,33 +19,13 @@ function sanitize(str) {
   return str.replace(/\x1B\[[0-9;]*m/g, '').replace(/[^\x20-\x7E]/g, ' ').slice(0, 100);
 }
 
+const MARK_SCRIPT = path.join(__dirname, 'mark_spreadsheet.py');
+const GET_SCRIPT = path.join(__dirname, 'get_processed.py');
+
 function markSpreadsheet(name, status) {
   const safeStatus = sanitize(status);
-  const script = `
-from openpyxl import load_workbook
-from datetime import datetime
-import sys
-
-wb = load_workbook(sys.argv[1])
-ws = wb.active
-
-if ws.cell(1, 2).value != 'Status':
-    ws.cell(1, 2).value = 'Status'
-    ws.cell(1, 3).value = 'Timestamp'
-
-name = sys.argv[2]
-status = sys.argv[3]
-for row in ws.iter_rows(min_row=2):
-    if str(row[0].value or '').strip() == name:
-        row[1].value = status
-        row[2].value = datetime.now().strftime('%Y-%m-%d %H:%M')
-        break
-
-wb.save(sys.argv[1])
-`.trim();
-
   try {
-    execSync(`python3 -c ${JSON.stringify(script)} ${JSON.stringify(SPREADSHEET)} ${JSON.stringify(name)} ${JSON.stringify(safeStatus)}`);
+    execSync(`python3 ${JSON.stringify(MARK_SCRIPT)} ${JSON.stringify(SPREADSHEET)} ${JSON.stringify(name)} ${JSON.stringify(safeStatus)}`);
   } catch (err) {
     log(`WARNING: Could not update spreadsheet for "${name}": ${err.message.slice(0, 200)}`);
   }
@@ -53,21 +33,7 @@ wb.save(sys.argv[1])
 
 function getProcessedNames() {
   try {
-    const script = `
-from openpyxl import load_workbook
-import sys, json
-
-wb = load_workbook(sys.argv[1])
-ws = wb.active
-
-done = []
-for row in ws.iter_rows(min_row=2):
-    if row[1].value in ('Unpublished', 'Already unpublished', 'Expired'):
-        done.append(str(row[0].value or '').strip())
-
-print(json.dumps(done))
-`.trim();
-    const output = execSync(`python3 -c ${JSON.stringify(script)} ${JSON.stringify(SPREADSHEET)}`).toString();
+    const output = execSync(`python3 ${JSON.stringify(GET_SCRIPT)} ${JSON.stringify(SPREADSHEET)}`).toString();
     return new Set(JSON.parse(output));
   } catch {
     return new Set();
