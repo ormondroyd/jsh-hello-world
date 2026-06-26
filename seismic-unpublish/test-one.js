@@ -78,13 +78,11 @@ async function main() {
   console.log('Clicked Confirm');
 
   await confirmBtn.waitFor({ state: 'hidden', timeout: 15000 });
-  console.log('Modal closed — waiting for Unpublish button to show as disabled');
+  console.log('Modal closed — waiting for success toast');
 
-  await page.waitForFunction(
-    () => document.querySelector('[data-testid="cm-operations-unpublish-button"]')?.getAttribute('aria-disabled') === 'true',
-    { timeout: 15000 }
-  );
-  console.log('SUCCESS — asset is now unpublished');
+  const toast = page.locator(':text("is unpublished")');
+  await toast.waitFor({ state: 'visible', timeout: 15000 });
+  console.log('SUCCESS — toast confirmed');
 
   markSpreadsheet(asset.name, 'Unpublished');
 

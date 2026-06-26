@@ -72,10 +72,8 @@ async function unpublishAsset(page, asset) {
 
   await confirmBtn.waitFor({ state: 'hidden', timeout: 15000 });
 
-  await page.waitForFunction(
-    () => document.querySelector('[data-testid="cm-operations-unpublish-button"]')?.getAttribute('aria-disabled') === 'true',
-    { timeout: 15000 }
-  );
+  const toast = page.locator(':text("is unpublished")');
+  await toast.waitFor({ state: 'visible', timeout: 15000 });
 
   log(`DONE: ${asset.name}`);
   markSpreadsheet(asset.name, 'Unpublished');
