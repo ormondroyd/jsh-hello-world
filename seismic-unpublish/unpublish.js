@@ -14,7 +14,13 @@ function log(msg) {
   fs.appendFileSync(LOG_FILE, line + '\n');
 }
 
+function sanitize(str) {
+  // Strip ANSI escape codes and control characters, keep printable ASCII
+  return str.replace(/\x1B\[[0-9;]*m/g, '').replace(/[^\x20-\x7E]/g, ' ').slice(0, 100);
+}
+
 function markSpreadsheet(name, status) {
+  const safeStatus = sanitize(status);
   const script = `
 from openpyxl import load_workbook
 from datetime import datetime
@@ -27,9 +33,11 @@ if ws.cell(1, 2).value != 'Status':
     ws.cell(1, 2).value = 'Status'
     ws.cell(1, 3).value = 'Timestamp'
 
+name = sys.argv[2]
+status = sys.argv[3]
 for row in ws.iter_rows(min_row=2):
-    if str(row[0].value or '').strip() == sys.argv[2]:
-        row[1].value = sys.argv[3]
+    if str(row[0].value or '').strip() == name:
+        row[1].value = status
         row[2].value = datetime.now().strftime('%Y-%m-%d %H:%M')
         break
 
@@ -37,18 +45,62 @@ wb.save(sys.argv[1])
 `.trim();
 
   try {
-    execSync(`python3 -c "${script.replace(/"/g, '\\"')}" "${SPREADSHEET}" "${name.replace(/"/g, '\\"')}" "${status}"`);
+    execSync(`python3 -c ${JSON.stringify(script)} ${JSON.stringify(SPREADSHEET)} ${JSON.stringify(name)} ${JSON.stringify(safeStatus)}`);
   } catch (err) {
-    log(`WARNING: Could not update spreadsheet for "${name}": ${err.message}`);
+    log(`WARNING: Could not update spreadsheet for "${name}": ${err.message.slice(0, 200)}`);
   }
+}
+
+function getProcessedNames() {
+  try {
+    const script = `
+from openpyxl import load_workbook
+import sys, json
+
+wb = load_workbook(sys.argv[1])
+ws = wb.active
+
+done = []
+for row in ws.iter_rows(min_row=2):
+    if row[1].value in ('Unpublished', 'Already unpublished', 'Expired'):
+        done.append(str(row[0].value or '').strip())
+
+print(json.dumps(done))
+`.trim();
+    const output = execSync(`python3 -c ${JSON.stringify(script)} ${JSON.stringify(SPREADSHEET)}`).toString();
+    return new Set(JSON.parse(output));
+  } catch {
+    return new Set();
+  }
+}
+
+async function waitForLogin(page) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  await new Promise(resolve => rl.question('>>> Session expired — log in again in the browser, then press Enter...', () => { rl.close(); resolve(); }));
 }
 
 async function unpublishAsset(page, asset) {
   await page.goto(asset.url, { waitUntil: 'domcontentloaded' });
 
-  if (page.url().includes('/login') || page.url().includes('/signin')) {
-    log('ERROR: Not logged in — please log in and restart');
-    process.exit(1);
+  const url = page.url();
+
+  // Session expired
+  if (url.includes('/login') || url.includes('/signin')) {
+    log('Session expired — pausing for re-login');
+    await waitForLogin(page);
+    await page.goto(asset.url, { waitUntil: 'domcontentloaded' });
+  }
+
+  // Already unpublished or expired — URL tells us directly
+  if (page.url().includes('/unpublished/')) {
+    log(`SKIPPED (already unpublished): ${asset.name}`);
+    markSpreadsheet(asset.name, 'Already unpublished');
+    return 'skipped';
+  }
+  if (page.url().includes('/expireContent/')) {
+    log(`SKIPPED (expired): ${asset.name}`);
+    markSpreadsheet(asset.name, 'Expired');
+    return 'skipped';
   }
 
   const openInLibrary = page.locator('[data-atmt-id="Open In Library"]');
@@ -82,11 +134,17 @@ async function unpublishAsset(page, asset) {
 }
 
 async function main() {
+  const alreadyDone = getProcessedNames();
+  if (alreadyDone.size > 0) {
+    log(`Resuming — skipping ${alreadyDone.size} already-processed assets`);
+  }
+
   const browser = await chromium.launch({ headless: false });
   const context = await browser.newContext();
   const page = await context.newPage();
 
   await page.goto('https://bmchelix.seismic.com', { waitUntil: 'domcontentloaded' });
+
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   await new Promise(resolve => rl.question('>>> Log into Seismic in the browser, then press Enter to continue...', () => { rl.close(); resolve(); }));
   log('Logged in — starting unpublish run');
@@ -95,22 +153,30 @@ async function main() {
 
   for (let i = 0; i < assets.length; i++) {
     const asset = assets[i];
+
+    if (alreadyDone.has(asset.name.trim())) {
+      log(`[${i + 1}/${assets.length}] SKIPPED (already done): ${asset.name}`);
+      results.skipped++;
+      continue;
+    }
+
     log(`[${i + 1}/${assets.length}] ${asset.name}`);
     try {
       const result = await unpublishAsset(page, asset);
       if (result === 'done') results.done++;
       else if (result === 'skipped') results.skipped++;
     } catch (err) {
-      log(`ERROR: ${asset.name} — ${err.message}`);
-      markSpreadsheet(asset.name, `Error: ${err.message.slice(0, 80)}`);
-      results.errors.push({ name: asset.name, url: asset.url, error: err.message });
+      const msg = sanitize(err.message.split('\n')[0]);
+      log(`ERROR: ${asset.name} — ${msg}`);
+      markSpreadsheet(asset.name, `Error: ${msg}`);
+      results.errors.push({ name: asset.name, url: asset.url, error: msg });
       await page.screenshot({ path: path.join(__dirname, `error_${i + 1}.png`) }).catch(() => {});
     }
   }
 
   log(`\n=== COMPLETE ===`);
   log(`Unpublished: ${results.done}`);
-  log(`Already unpublished (skipped): ${results.skipped}`);
+  log(`Skipped: ${results.skipped}`);
   log(`Errors: ${results.errors.length}`);
   if (results.errors.length > 0) {
     log('Failed assets:');
