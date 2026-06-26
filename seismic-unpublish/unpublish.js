@@ -5,6 +5,7 @@ const { execSync } = require('child_process');
 const readline = require('readline');
 
 const SPREADSHEET = '/Users/jhall/Seismic Archive/archive list.xlsx';
+const START_FROM_ROW = 100; // 1-based row number in spreadsheet (row 1 = header)
 const assets = JSON.parse(fs.readFileSync(path.join(__dirname, 'assets.json'), 'utf8'));
 const LOG_FILE = path.join(__dirname, 'results.log');
 
@@ -141,7 +142,7 @@ async function main() {
 
   const results = { done: 0, skipped: 0, errors: [] };
 
-  for (let i = 0; i < assets.length; i++) {
+  for (let i = START_FROM_ROW - 2; i < assets.length; i++) {
     const asset = assets[i];
 
     if (alreadyDone.has(asset.name.trim())) {
