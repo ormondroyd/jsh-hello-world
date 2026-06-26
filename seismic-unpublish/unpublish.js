@@ -75,16 +75,25 @@ async function unpublishAsset(page, asset) {
     return 'skipped';
   }
 
-  // Wait for either the Open in Library button or the "Content not found" page
+  // Wait for either the Open in Library button or a known dead-end page
   const arrived = await Promise.race([
     page.locator('[data-atmt-id="Open In Library"]').waitFor({ state: 'visible', timeout: 15000 }).then(() => 'open'),
     page.locator(':text("no longer published")').waitFor({ state: 'visible', timeout: 15000 }).then(() => 'notfound'),
     page.locator(':text("no longer available")').waitFor({ state: 'visible', timeout: 15000 }).then(() => 'notfound'),
+    page.locator(':text("has expired")').waitFor({ state: 'visible', timeout: 15000 }).then(() => 'notfound'),
+    // Sales Edge redirect — different Seismic product, no library unpublish available
+    page.waitForURL('**/salesedge/**', { timeout: 15000 }).then(() => 'salesedge'),
+    page.locator('text=sales | edge').waitFor({ state: 'visible', timeout: 15000 }).then(() => 'salesedge'),
   ]).catch(() => 'timeout');
 
   if (arrived === 'notfound') {
     log(`SKIPPED (already unpublished - content not found page): ${asset.name}`);
     markSpreadsheet(asset.name, 'Already unpublished');
+    return 'skipped';
+  }
+  if (arrived === 'salesedge') {
+    log(`SKIPPED (Sales Edge content - cannot unpublish via library): ${asset.name}`);
+    markSpreadsheet(asset.name, 'Sales Edge - manual');
     return 'skipped';
   }
   if (arrived === 'timeout') {
