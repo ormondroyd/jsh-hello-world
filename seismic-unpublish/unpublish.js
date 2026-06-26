@@ -79,6 +79,7 @@ async function unpublishAsset(page, asset) {
   const arrived = await Promise.race([
     page.locator('[data-atmt-id="Open In Library"]').waitFor({ state: 'visible', timeout: 15000 }).then(() => 'open'),
     page.locator(':text("no longer published")').waitFor({ state: 'visible', timeout: 15000 }).then(() => 'notfound'),
+    page.locator(':text("no longer available")').waitFor({ state: 'visible', timeout: 15000 }).then(() => 'notfound'),
   ]).catch(() => 'timeout');
 
   if (arrived === 'notfound') {
