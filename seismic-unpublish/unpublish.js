@@ -2,6 +2,7 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const readline = require('readline');
 
 const SPREADSHEET = '/Users/jhall/Seismic Archive/archive list.xlsx';
 const assets = JSON.parse(fs.readFileSync(path.join(__dirname, 'assets.json'), 'utf8'));
@@ -86,8 +87,8 @@ async function main() {
   const page = await context.newPage();
 
   await page.goto('https://bmchelix.seismic.com', { waitUntil: 'domcontentloaded' });
-  log('>>> Log into Seismic in the browser window, then click Resume in the Playwright inspector to continue.');
-  await page.pause();
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  await new Promise(resolve => rl.question('>>> Log into Seismic in the browser, then press Enter to continue...', () => { rl.close(); resolve(); }));
   log('Logged in — starting unpublish run');
 
   const results = { done: 0, skipped: 0, errors: [] };
