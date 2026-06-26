@@ -1,0 +1,10 @@
+{
+  "name": "seismic-unpublish",
+  "version": "1.0.0",
+  "scripts": {
+    "unpublish": "node unpublish.js"
+  },
+  "dependencies": {
+    "playwright": "^1.44.0"
+  }
+}
