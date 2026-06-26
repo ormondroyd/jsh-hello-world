@@ -46,6 +46,12 @@ async function waitForLogin(page) {
 }
 
 async function unpublishAsset(page, asset) {
+  if (!asset.url.includes('seismic.com')) {
+    log(`SKIPPED (not in Seismic): ${asset.name} — ${asset.url}`);
+    markSpreadsheet(asset.name, 'Not in Seismic');
+    return 'skipped';
+  }
+
   await page.goto(asset.url, { waitUntil: 'domcontentloaded' });
 
   const url = page.url();
