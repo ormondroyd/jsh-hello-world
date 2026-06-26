@@ -81,9 +81,6 @@ async function unpublishAsset(page, asset) {
     page.locator(':text("no longer published")').waitFor({ state: 'visible', timeout: 15000 }).then(() => 'notfound'),
     page.locator(':text("no longer available")').waitFor({ state: 'visible', timeout: 15000 }).then(() => 'notfound'),
     page.locator(':text("has expired")').waitFor({ state: 'visible', timeout: 15000 }).then(() => 'notfound'),
-    // Sales Edge redirect — different Seismic product, no library unpublish available
-    page.waitForURL('**/salesedge/**', { timeout: 15000 }).then(() => 'salesedge'),
-    page.locator('text=sales | edge').waitFor({ state: 'visible', timeout: 15000 }).then(() => 'salesedge'),
   ]).catch(() => 'timeout');
 
   if (arrived === 'notfound') {
@@ -91,13 +88,10 @@ async function unpublishAsset(page, asset) {
     markSpreadsheet(asset.name, 'Already unpublished');
     return 'skipped';
   }
-  if (arrived === 'salesedge') {
-    log(`SKIPPED (Sales Edge content - cannot unpublish via library): ${asset.name}`);
-    markSpreadsheet(asset.name, 'Sales Edge - manual');
-    return 'skipped';
-  }
   if (arrived === 'timeout') {
-    throw new Error('Timed out waiting for Open in Library button or Content not found page');
+    log(`SKIPPED (content not accessible - blank page): ${asset.name}`);
+    markSpreadsheet(asset.name, 'Not accessible');
+    return 'skipped';
   }
 
   const openInLibrary = page.locator('[data-atmt-id="Open In Library"]');
